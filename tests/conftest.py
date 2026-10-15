@@ -1,3 +1,4 @@
+import os
 import shutil
 import socket
 import subprocess
@@ -14,6 +15,15 @@ from app.main import app
 
 @pytest.fixture(scope="session")
 def mongo_server():
+    external_uri = os.environ.get("HRONE_TEST_MONGO_URI")
+    if external_uri:
+        client = MongoClient(external_uri, serverSelectionTimeoutMS=3000)
+        try:
+            client.admin.command("ping")
+            yield external_uri
+        finally:
+            client.close()
+        return
     if not shutil.which("mongod"):
         pytest.skip("mongod is unavailable")
     with tempfile.TemporaryDirectory(prefix="hrone-test-") as directory:

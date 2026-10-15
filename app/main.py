@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import AfterValidator, BaseModel, Field, StrictInt, model_validator
 from pymongo import ASCENDING, DESCENDING, MongoClient
-from pymongo.errors import ConnectionFailure, DuplicateKeyError, PyMongoError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 load_dotenv(override=False)
 UTC = timezone.utc
@@ -214,21 +214,18 @@ async def lifespan(app: FastAPI):
         os.environ["MONGO_URI"],
         tz_aware=True, tzinfo=UTC, serverSelectionTimeoutMS=3000, connectTimeoutMS=3000,
     )
-    app.state.mongo_client = client
-    app.state.db = client[os.environ["MONGO_DB"]]
     try:
-        app.state.db.employees.create_index([("emp_code", ASCENDING)], unique=True)
-        app.state.db.employees.create_index([("department", ASCENDING), ("emp_code", ASCENDING)])
-        app.state.db.employees.create_index([("joined_on", ASCENDING), ("department", ASCENDING)])
-        app.state.db.employees.create_index([("department", ASCENDING), ("joined_on", ASCENDING)])
-        app.state.db.attendance_logs.create_index([("emp_code", ASCENDING), ("date", ASCENDING)], unique=True)
-        app.state.db.attendance_logs.create_index([("emp_code", ASCENDING), ("punch_in", DESCENDING)])
-        app.state.db.attendance_logs.create_index([("date", DESCENDING), ("emp_code", ASCENDING)])
-        app.state.db.attendance_logs.create_index([("status", ASCENDING), ("date", DESCENDING), ("emp_code", ASCENDING)])
-    except ConnectionFailure:
-        # The health probe reports an unavailable server. Other index errors must surface.
-        pass
-    try:
+        db = client[os.environ["MONGO_DB"]]
+        db.employees.create_index([("emp_code", ASCENDING)], unique=True)
+        db.employees.create_index([("department", ASCENDING), ("emp_code", ASCENDING)])
+        db.employees.create_index([("joined_on", ASCENDING), ("department", ASCENDING)])
+        db.employees.create_index([("department", ASCENDING), ("joined_on", ASCENDING)])
+        db.attendance_logs.create_index([("emp_code", ASCENDING), ("date", ASCENDING)], unique=True)
+        db.attendance_logs.create_index([("emp_code", ASCENDING), ("punch_in", DESCENDING)])
+        db.attendance_logs.create_index([("date", DESCENDING), ("emp_code", ASCENDING)])
+        db.attendance_logs.create_index([("status", ASCENDING), ("date", DESCENDING), ("emp_code", ASCENDING)])
+        app.state.mongo_client = client
+        app.state.db = db
         yield
     finally:
         client.close()
@@ -249,7 +246,7 @@ def health():
 @app.post("/employees", status_code=201)
 def create_employee(body: EmployeeIn):
     doc = body.model_dump()
-    doc["created_at"] = datetime.now(UTC)
+    doc["created_at"] = truncate_seconds(datetime.now(UTC))
     try:
         app.state.db.employees.insert_one(doc)
     except DuplicateKeyError as exc:

@@ -93,8 +93,8 @@ def test_punch_out_errors_and_latest_closed(api):
     add_record(db)
     for value in (None, "1783312500000", 1783312500000.0, True, 1783312500, 99999999999, 4102444800001):
         assert client.post("/attendance/punch-out", json={"emp_code": "EMP0001", "punched_at": value}).status_code == 422
-    for clock in ("09:29:59", "09:30:00"):
-        assert client.post("/attendance/punch-out", json={"emp_code": "EMP0001", "punched_at": ms(DAY, clock)}).status_code in (404, 422)
+    assert client.post("/attendance/punch-out", json={"emp_code": "EMP0001", "punched_at": ms(DAY, "09:29:59")}).status_code == 404
+    assert client.post("/attendance/punch-out", json={"emp_code": "EMP0001", "punched_at": ms(DAY, "09:30:00")}).status_code == 422
     assert client.post("/attendance/punch-out", json={"emp_code": "EMP0001", "punched_at": ms("2026-07-07", "09:30:01")}).status_code == 422
     db.attendance_logs.insert_one({"emp_code": "EMP0001", "date": "2026-07-07", "status": "PRESENT", "punch_in": instant("2026-07-07", "09:00:00"), "punch_out": instant("2026-07-07", "17:00:00")})
     result = client.post("/attendance/punch-out", json={"emp_code": "EMP0001", "punched_at": ms("2026-07-07", "18:00:00")})

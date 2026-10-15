@@ -1,6 +1,6 @@
 # Phase 1 starter review
 
-The locations below refer to the supplied starter `app/main.py`. This review covers the helpers and five Phase 1 routes; Phase 2 routes have not been implemented or reviewed as completed work.
+The locations below refer to the supplied starter `app/main.py`. This review covers its helpers and five Phase 1 routes. Later endpoints and fixes are documented in the current implementation, not attributed to the starter.
 
 | # | Starter location | Defect and reproducing example | Fix |
 |---|---|---|---|
@@ -28,4 +28,4 @@ The locations below refer to the supplied starter `app/main.py`. This review cov
 
 - `date` and `joined_on` are strings in MongoDB. They represent IST calendar days, and ISO ordering supports date-range filters.
 - Calling `load_dotenv()` without `override=True` preserves injected environment variables over a local `.env` file.
-- Keeping absent and leave records out of punch-in is consistent with the status table. The API may still read such seeded records.
+- The contract's distinction between punch-in presence statuses and absent or leave records is sound. The starter did not enforce it; defect 7 describes that gap.

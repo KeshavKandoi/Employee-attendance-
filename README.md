@@ -1,10 +1,10 @@
 # HROne Employee Attendance & Analytics API
 
-Phases 1–4 implement the full set of endpoints in `openapi.yaml`: health, employees, attendance, monthly and department analytics, the late leaderboard, department trend, and execution-plan explain.
+The API implements the endpoints in `openapi.yaml`: health, employees, attendance, monthly and department analytics, late leaderboard, department trend, and execution-plan explain.
 
 ## Run
 
-Use Python 3.11+ and MongoDB 6.0+ (the grader uses MongoDB 7.0). From this directory:
+Use Python 3.11+ and MongoDB 6.0+ (verified here with Python 3.11.14 and MongoDB 7.0.14). From this directory:
 
 ```bash
 python3.11 -m venv .venv
@@ -14,7 +14,7 @@ cp .env.example .env
 uvicorn app.main:app --port 8000
 ```
 
-Set `MONGO_URI` and `MONGO_DB` in the environment or local `.env`. Actual environment variables take precedence. The startup lifecycle creates indexes, including unique employee-code and `(emp_code, date)` indexes and an `(emp_code, punch_in)` index for the latest eligible punch-in lookup. `GET /health` returns 200 only when MongoDB responds to a ping. Punch-out and regularization use a per-record internal version check: only an update based on the current version succeeds, and a conflicting update returns 409. Regularization appends the audit entry in the same atomic database update. The sample seed script **deletes existing collection contents**; run it only against a verified disposable database. It is not needed to start the API.
+Set `MONGO_URI` and `MONGO_DB` in the environment or local `.env`. Environment variables take precedence. Startup creates every required index before serving traffic; any index failure aborts startup. `GET /health` pings MongoDB and returns 503 during an outage after startup. Punch-out and regularization use a per-record version check and return 409 on a conflicting update. Regularization appends audit history atomically. The optional sample seed script **deletes existing collection contents**; use it only with a verified disposable database. It does not run at startup.
 
 ## Analytics choices
 
@@ -30,12 +30,12 @@ The index choices are tied to the operations: unique `employees.emp_code` and un
 pytest -q
 ```
 
-The integration and concurrency tests start an isolated disposable `mongod` process on localhost and create a uniquely named test database, then remove it. They skip if the `mongod` executable is unavailable. The unit helper test does not need MongoDB.
+The integration and concurrency tests start an isolated disposable `mongod` process on localhost and create uniquely named test databases, then remove them. They skip if `mongod` is unavailable. To test against an existing disposable MongoDB instance, set `HRONE_TEST_MONGO_URI`; the tests still create and drop only their own uniquely named databases. The pure helper tests do not need MongoDB. A skip is not database verification.
 
 For an optional large-data check, run `pytest -s -q tests/benchmark_phase4.py`. It creates 100,000 synthetic attendance records in another disposable database and prints startup, query, and `executionStats` timings. It never runs `sample_seed.py`.
 
-## Measured performance and remaining work
+## Measured performance
 
-On the local MongoDB 8.0.10 test process with 500 employees and 100,000 attendance records, index creation and application startup took 0.955 seconds. Representative HTTP requests took 0.029 seconds for the default attendance list, 0.013 for a filtered page, 0.011 for employee monthly, 0.167 for department summary, 0.038 for the late leaderboard, and 2.513 for a 92-day department trend. The five explain requests took 0.005, 0.008, 0.162, 0.035, and 2.756 seconds respectively. Each plan showed an index scan and no collection scan, including lookup collection-scan counts of zero. MongoDB 8 reported `EXPRESS_IXSCAN` for the trend anchor and `IXSCAN` for the other four operations. These are local measurements; MongoDB 7 and the grader's hidden dataset remain unverified.
+Current MongoDB 7.0.14 run, with 500 employees and 100,000 attendance records: startup including index creation 0.828 seconds. HTTP timings in seconds: attendance list 0.020, filtered page 0.006, employee monthly 0.005, department summary 0.073, late leaderboard 0.029, 92-day department trend 1.482. The five `executionStats` requests took 0.005, 0.005, 0.080, 0.031, and 1.457 seconds in the order listed by the benchmark. Each showed `IXSCAN`, zero reported outer collection scans, and zero lookup collection scans. Full regression suite: 31 passed, none skipped. A separate Uvicorn process returned 200 from `/health` against a disposable MongoDB 7 database.
 
-The API scope is complete. A later submission audit and final `DECISIONS.md` write-up remain. `REVIEW.md` continues to describe only actual starter defects.
+Historical MongoDB 8.0.10 measurements before Phase 5: startup 0.955 seconds and 92-day trend 2.513 seconds on the same dataset size. These local timings are environment dependent. The grader's hidden dataset and tests remain unverified.
