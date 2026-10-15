@@ -13,6 +13,8 @@ from bson import json_util
 from bson.decimal128 import Decimal128
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 from pydantic import AfterValidator, BaseModel, Field, StrictInt, model_validator
 from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.errors import DuplicateKeyError, PyMongoError
@@ -224,7 +226,18 @@ async def lifespan(app: FastAPI):
         client.close()
 
 
-app = FastAPI(title="Employee Attendance & Analytics API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Employee Attendance & Analytics API", version="2.0.0", lifespan=lifespan, docs_url=None)
+
+
+@app.get("/docs", include_in_schema=False)
+def swagger_docs():
+    page = get_swagger_ui_html(openapi_url=app.openapi_url, title=f"{app.title} - Swagger UI")
+    styles = """<style>
+    .swagger-ui .info .title > span,
+    .swagger-ui .info .title small,
+    .swagger-ui .info .main > a { display: none; }
+    </style>"""
+    return HTMLResponse(page.body.decode("utf-8").replace("</head>", styles + "</head>"))
 
 
 @app.get("/health")
