@@ -1,41 +1,81 @@
 # HROne Employee Attendance & Analytics API
 
-The API implements the endpoints in `openapi.yaml`: health, employees, attendance, monthly and department analytics, late leaderboard, department trend, and execution-plan explain.
+A FastAPI service backed by MongoDB for employee records, attendance, corrections, and attendance analytics. The HTTP contract and business rules are in [`openapi.yaml`](openapi.yaml); stored document shapes are in [`DATA_MODEL.md`](DATA_MODEL.md).
 
-## Run
+## Capabilities
 
-Use Python 3.11+ and MongoDB 6.0+ (verified here with Python 3.11.14 and MongoDB 7.0.14). From this directory:
+- Create and list employees; record punch-in and punch-out for day or overnight shifts.
+- Correct attendance with recalculated totals and append-only audit history.
+- List attendance with filters and pagination; report monthly employee metrics, department summaries, late rankings, and daily department trends.
+- Inspect execution plans for the five list or analytics operations through the explain endpoint.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Check MongoDB readiness |
+| POST, GET | `/employees` | Create or list employees |
+| POST | `/attendance/punch-in` | Open an attendance record |
+| POST | `/attendance/punch-out` | Close the latest eligible record |
+| GET | `/attendance` | Filter and page attendance records |
+| PATCH | `/attendance/{emp_code}/{date}` | Correct one record |
+| GET | `/analytics/employees/{emp_code}/monthly` | Employee monthly metrics |
+| GET | `/analytics/departments/summary` | Department monthly metrics |
+| GET | `/analytics/leaderboard/late` | Late ranking |
+| GET | `/analytics/departments/{department}/trend` | Daily trend |
+| GET | `/admin/explain/{endpoint}` | Query execution statistics |
+
+## Requirements and setup
+
+Use Python 3.11+ and MongoDB 6.0+ (local or Atlas). Install dependencies from the repository root:
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+```
+
+Set `MONGO_URI` and `MONGO_DB` in `.env` or the process environment. Process environment variables take precedence. For local MongoDB, use `MONGO_URI=mongodb://localhost:27017` and a database name such as `MONGO_DB=attendance_db`. For Atlas, use a URI such as `MONGO_URI=mongodb+srv://<user>:<password>@<cluster-host>/?retryWrites=true&w=majority` and set `MONGO_DB=<database-name>`. Replace placeholders locally and keep credentials out of Git. Ensure the database is reachable and the configured user can create indexes and read and write both collections.
+
+Start the service with:
+
+```bash
 uvicorn app.main:app --port 8000
 ```
 
-Set `MONGO_URI` and `MONGO_DB` in the environment or local `.env`. Environment variables take precedence. Startup creates every required index before serving traffic; any index failure aborts startup. `GET /health` pings MongoDB and returns 503 during an outage after startup. Punch-out and regularization use a per-record version check and return 409 on a conflicting update. Regularization appends audit history atomically. The optional sample seed script **deletes existing collection contents**; use it only with a verified disposable database. It does not run at startup.
+Swagger UI is at [http://localhost:8000/docs](http://localhost:8000/docs). Startup creates all required indexes before accepting requests; a failed index build aborts startup. Unique indexes on employee code and `(emp_code, date)` enforce one employee and one attendance record per employee per attendance day.
 
-## Analytics choices
+## Try the API
 
-The monthly and department pipelines start from `employees`, then look up indexed attendance records. This keeps employees with no logs in headcount and gives them zero totals. Department average hours divide the sum of eligible record hours by the number of eligible records, so employees with different numbers of logs have the correct weight. The leaderboard groups logs, joins existing employees, applies any department filter, and uses MongoDB's competition `$rank` before the rank cutoff; ties at the cutoff remain in the result.
+Create an employee, then punch in and punch out later. These commands use the current server time and therefore need no `punched_at` field:
 
-The pipelines convert stored work hours to Decimal128 for summation. Reported averages and rates use `floor(value × scale + 0.5) / scale` in Decimal128, then convert to JSON numbers. This gives half-up rounding for the contract's nonnegative values; MongoDB `$round` uses half-even. The trend pipeline generates its bounded date spine inside MongoDB from one department employee. It looks up daily headcount and attendance totals, then applies a seven-row window average to the rounded, nullable daily rates. The explain endpoint calls the same query and pipeline builders with the same options as the public routes, requesting `executionStats`; BSON values in the raw plan use Extended JSON where ordinary JSON has no equivalent.
+```bash
+curl -X POST http://localhost:8000/employees -H 'Content-Type: application/json' -d '{"emp_code":"EMP9005","name":"Asha Rao","email":"asha@example.com","department":"Engineering","joined_on":"2026-07-01"}'
+curl -X POST http://localhost:8000/attendance/punch-in -H 'Content-Type: application/json' -d '{"emp_code":"EMP9005","status":"PRESENT"}'
+curl -X POST http://localhost:8000/attendance/punch-out -H 'Content-Type: application/json' -d '{"emp_code":"EMP9005"}'
+```
 
-The index choices are tied to the operations: unique `employees.emp_code` and unique `attendance_logs.(emp_code, date)` enforce identities; `employees.(department, emp_code)` supports filtered employee sorting; `employees.(joined_on, department)` supports unfiltered monthly headcount; `employees.(department, joined_on)` supports daily department headcount; `attendance_logs.(emp_code, punch_in)` supports latest eligible punch-out; `attendance_logs.(date, emp_code)` supports the default attendance list, date joins, and monthly leaderboard; and `attendance_logs.(status, date, emp_code)` supports status-filtered lists. The unique employee/date index also supports employee-specific attendance lookups. No index is created solely for explain.
+Punch-out must be later than punch-in and within 24 hours. Explicit instant fields, including `punched_at` and correction times, are **integer epoch milliseconds**; ISO date strings are invalid. Omitted punch times use the UTC server clock truncated to whole seconds. Attendance dates follow the contract's IST rules, including overnight shifts. Date-only fields use `YYYY-MM-DD`; month parameters use `YYYY-MM`.
 
-## Test
+Corrections append an audit-history entry and recalculate derived fields. Analytics run as MongoDB aggregation pipelines over stored attendance metrics. Department headcount includes employees with no logs.
+
+## Sample data
+
+`sample_seed.py` **deletes existing documents from both collections** in the configured database before loading the included examples. Use a verified disposable database; this step is optional and never runs at startup.
+
+```bash
+MONGO_URI=mongodb://localhost:27017 MONGO_DB=attendance_sample python sample_seed.py
+```
+
+For Atlas, replace the local URI with your configured Atlas URI and verify the database name before running the command.
+
+## Tests and benchmark
 
 ```bash
 pytest -q
+pytest -q tests/test_attendance_core.py tests/test_attendance_corrections.py tests/test_analytics.py tests/test_trends_explain.py tests/test_startup_indexes.py
+pytest -s -q tests/benchmark_large_dataset.py
 ```
 
-The integration and concurrency tests start an isolated disposable `mongod` process on localhost and create uniquely named test databases, then remove them. They skip if `mongod` is unavailable. To test against an existing disposable MongoDB instance, set `HRONE_TEST_MONGO_URI`; the tests still create and drop only their own uniquely named databases. The pure helper tests do not need MongoDB. A skip is not database verification.
+Integration tests start an isolated local `mongod` and use uniquely named disposable databases. They skip when `mongod` is unavailable. To use a separately managed test server, set `HRONE_TEST_MONGO_URI` to its URI; tests still create and drop only their own named databases. The optional benchmark loads 500 synthetic employees and 100,000 attendance records into a disposable database, then prints route timings and five `executionStats` summaries. It does not run during the default suite.
 
-For an optional large-data check, run `pytest -s -q tests/benchmark_phase4.py`. It creates 100,000 synthetic attendance records in another disposable database and prints startup, query, and `executionStats` timings. It never runs `sample_seed.py`.
-
-## Measured performance
-
-Current MongoDB 7.0.14 run, with 500 employees and 100,000 attendance records: startup including index creation 0.828 seconds. HTTP timings in seconds: attendance list 0.020, filtered page 0.006, employee monthly 0.005, department summary 0.073, late leaderboard 0.029, 92-day department trend 1.482. The five `executionStats` requests took 0.005, 0.005, 0.080, 0.031, and 1.457 seconds in the order listed by the benchmark. Each showed `IXSCAN`, zero reported outer collection scans, and zero lookup collection scans. Full regression suite: 31 passed, none skipped. A separate Uvicorn process returned 200 from `/health` against a disposable MongoDB 7 database.
-
-Historical MongoDB 8.0.10 measurements before Phase 5: startup 0.955 seconds and 92-day trend 2.513 seconds on the same dataset size. These local timings are environment dependent. The grader's hidden dataset and tests remain unverified.
+The service does not provide authentication or access control; use it only in an appropriately isolated environment. Local performance varies by database and machine, and the supplied sample data does not cover every contract case.
