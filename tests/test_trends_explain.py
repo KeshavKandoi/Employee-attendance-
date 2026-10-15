@@ -6,8 +6,8 @@ from app.main import (
     ANALYTICS_OPTIONS, attendance_list_operation, department_summary_pipeline,
     department_trend_pipeline, employee_monthly_pipeline, late_leaderboard_pipeline,
 )
-from test_phase1 import instant
-from test_phase3 import scan_stages, seed_employee, seed_log
+from test_attendance_core import instant
+from test_analytics import scan_stages, seed_employee, seed_log
 
 
 def trend(client, department="Engineering", start="2026-07-06", end="2026-07-14"):
@@ -23,7 +23,7 @@ def test_trend_gap_filling_headcount_weekends_and_window(api):
              punch_in=instant("2026-07-07", "09:30:00"))
     seed_log(db, "EMP0001", "2026-07-08", status="WFH", half_day=False)
     seed_log(db, "EMP0002", "2026-07-08", status="ON_DUTY", half_day=False, late_minutes=0)
-    seed_log(db, "EMP0001", "2026-07-09", status="PRESENT")  # Legacy missing derived fields.
+    seed_log(db, "EMP0001", "2026-07-09", status="PRESENT")
     seed_log(db, "EMP0002", "2026-07-11", status="PRESENT", half_day=True, late_minutes=5)
     result = trend(client)
     assert result.status_code == 200, result.text
@@ -46,7 +46,7 @@ def test_trend_gap_filling_headcount_weekends_and_window(api):
     ]
     for row, (headcount, present, late, working, rate, moving) in zip(rows, expected):
         assert (row["headcount"], row["present_count"], row["late_count"], row["is_working_day"], row["attendance_rate"], row["moving_avg_7d"]) == (headcount, present, late, working, rate, moving)
-    # Rows before the requested start do not contribute to the shorter initial window.
+
     shorter = trend(client, start="2026-07-08", end="2026-07-14").json()["items"]
     assert shorter[0]["attendance_rate"] == 1.0 and shorter[0]["moving_avg_7d"] == 1.0
 
@@ -79,13 +79,13 @@ def test_trend_four_decimal_half_up_rate_and_moving_average(api):
     client, db = api
     for number in range(1, 4):
         seed_employee(db, f"EMP{number:04d}", joined="2026-07-01")
-    seed_log(db, "EMP0001", "2026-07-06")  # Rate 1/3 -> 0.3333.
+    seed_log(db, "EMP0001", "2026-07-06")
     seed_log(db, "EMP0001", "2026-07-07")
-    seed_log(db, "EMP0002", "2026-07-07", half_day=True)  # Rate 1.5/3 -> 0.5.
+    seed_log(db, "EMP0002", "2026-07-07", half_day=True)
     rows = trend(client, start="2026-07-06", end="2026-07-07").json()["items"]
     assert [row["attendance_rate"] for row in rows] == [0.3333, 0.5]
     assert [row["moving_avg_7d"] for row in rows] == [0.3333, 0.4167]
-    # Exactly halfway at four decimals: 0.5 / 16 = 0.03125 -> 0.0313.
+
     for number in range(4, 17):
         seed_employee(db, f"EMP{number:04d}", joined="2026-07-01")
     seed_log(db, "EMP0001", "2026-07-08", half_day=True)

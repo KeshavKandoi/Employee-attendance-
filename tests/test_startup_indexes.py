@@ -8,7 +8,7 @@ from pymongo.errors import ConnectionFailure, OperationFailure
 from pymongo import MongoClient
 
 import app.main as main
-from test_phase1 import employee
+from test_attendance_core import employee
 
 
 @pytest.mark.parametrize("failed_call,error", [
@@ -37,7 +37,7 @@ def test_index_failure_aborts_startup_and_closes_client(monkeypatch, failed_call
             pass
     assert len(calls) == failed_call
     fake_client.close.assert_called_once_with()
-    # A later successful ping cannot complete the failed lifespan startup.
+
     fake_db.command.return_value = {"ok": 1}
     assert fake_db.command("ping") == {"ok": 1}
     assert len(calls) == failed_call

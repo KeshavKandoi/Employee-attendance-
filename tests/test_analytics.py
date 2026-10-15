@@ -1,5 +1,5 @@
 from app.main import ANALYTICS_OPTIONS, department_summary_pipeline, employee_monthly_pipeline, late_leaderboard_pipeline
-from test_phase1 import instant
+from test_attendance_core import instant
 
 
 def seed_employee(db, code, department="Engineering", joined="2026-07-01", name=None):
@@ -45,10 +45,10 @@ def test_employee_and_department_metrics_from_stored_values(api):
     client, db = api
     seed_employee(db, "EMP0001")
     seed_employee(db, "EMP0002")
-    seed_employee(db, "EMP0003")  # Headcount with zero attendance.
-    seed_employee(db, "EMP0004", joined="2026-08-01")  # Excluded from July headcount.
+    seed_employee(db, "EMP0003")
+    seed_employee(db, "EMP0004", joined="2026-08-01")
     seed_employee(db, "EMP0005", department="Sales")
-    # Timestamps imply a normal nine-hour day, but stored analytics values are authoritative.
+
     seed_log(db, "EMP0001", "2026-07-06", half_day=True, work_hours=1.0, late_minutes=12,
              overtime_minutes=10, punch_in=instant("2026-07-06", "09:30:00"),
              punch_out=instant("2026-07-06", "18:30:00"))
@@ -56,7 +56,7 @@ def test_employee_and_department_metrics_from_stored_values(api):
     seed_log(db, "EMP0001", "2026-07-11", status="ON_DUTY", work_hours=10.0, late_minutes=28, overtime_minutes=40)
     seed_log(db, "EMP0001", "2026-07-08", status="ABSENT")
     seed_log(db, "EMP0001", "2026-07-09", status="LEAVE")
-    seed_log(db, "EMP0002", "2026-07-06", work_hours=8.0)  # Legacy missing derived totals.
+    seed_log(db, "EMP0002", "2026-07-06", work_hours=8.0)
     seed_log(db, "EMP0005", "2026-07-06", status="LEAVE")
     seed_log(db, "EMP0004", "2026-07-06", work_hours=12.0, late_minutes=999)
     employee = client.get("/analytics/employees/EMP0001/monthly", params={"month": "2026-07"})
@@ -88,7 +88,7 @@ def test_half_up_rate_average_and_open_record(api):
     seed_employee(db, "EMP0010", department="Rounding", joined="2026-07-10")
     seed_log(db, "EMP0010", "2026-07-10", half_day=True, work_hours=1.0)
     seed_log(db, "EMP0010", "2026-07-13", status="WFH", half_day=False, work_hours=1.01)
-    # 1.5 / 16 * 100 = 9.375; half-up to 9.38. Average 1.005 -> 1.01.
+
     result = client.get("/analytics/employees/EMP0010/monthly", params={"month": "2026-07"})
     assert result.status_code == 200 and result.json()["working_days"] == 16
     assert result.json()["attendance_pct"] == 9.38
@@ -110,7 +110,7 @@ def test_leaderboard_ties_skipped_rank_department_and_orphans(api):
     seed_employee(db, "EMP0004", name="D")
     seed_log(db, "EMP0001", "2026-07-06", late_minutes=100)
     seed_log(db, "EMP0002", "2026-07-06", late_minutes=20)
-    seed_log(db, "EMP0002", "2026-07-11", late_minutes=30)  # Weekend counts.
+    seed_log(db, "EMP0002", "2026-07-11", late_minutes=30)
     seed_log(db, "EMP0003", "2026-07-06", late_minutes=50)
     seed_log(db, "EMP0004", "2026-07-06", late_minutes=10)
     seed_log(db, "ORPHAN", "2026-07-06", late_minutes=1000)

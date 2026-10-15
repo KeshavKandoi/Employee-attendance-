@@ -1,6 +1,6 @@
-# Phase 1 starter review
+# Starter review
 
-The locations below refer to the supplied starter `app/main.py`. This review covers its helpers and five Phase 1 routes. Later endpoints and fixes are documented in the current implementation, not attributed to the starter.
+The locations below refer to the supplied starter `app/main.py`. This review covers its helpers and five original routes. Later endpoints are not attributed to the starter.
 
 | # | Starter location | Defect and reproducing example | Fix |
 |---|---|---|---|

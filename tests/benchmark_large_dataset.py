@@ -1,5 +1,3 @@
-"""Opt-in 100k-record integration benchmark: pytest -s -q tests/benchmark_phase4.py."""
-
 import json
 import time
 import uuid
@@ -9,7 +7,7 @@ from fastapi.testclient import TestClient
 from pymongo import MongoClient
 
 from app.main import app
-from test_phase3 import scan_stages
+from test_analytics import scan_stages
 
 
 def test_large_dataset_startup_queries_and_plans(mongo_server, monkeypatch):

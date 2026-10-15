@@ -1,7 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-import pytest
 from pymongo.errors import ConnectionFailure
 
 from app.main import (
@@ -96,7 +95,7 @@ def test_omitted_timestamp_and_overnight_date(api):
     assert response.json()["date"] == "2026-07-06"
     assert response.json()["punch_in"] == timestamp - 900
     assert db.attendance_logs.find_one({"emp_code": "EMP0005"})["date"] == "2026-07-06"
-    # A missing timestamp uses the server clock, even though an explicit null is invalid.
+
     assert client.post("/employees", json=employee("EMP0006")).status_code == 201
     assert client.post("/attendance/punch-in", json={"emp_code": "EMP0006"}).status_code == 201
 

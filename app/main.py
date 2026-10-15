@@ -1,5 +1,3 @@
-"""HROne Employee Attendance & Analytics API, phases 1–4."""
-
 from __future__ import annotations
 
 import os
@@ -54,7 +52,6 @@ def validate_month(value: str) -> str:
 CalendarMonth = Annotated[str, Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"), AfterValidator(validate_month)]
 
 
-# Time and calculation helpers. All instants are UTC-aware and second-truncated.
 def epoch_ms_to_utc(value: int) -> datetime:
     return datetime(1970, 1, 1, tzinfo=UTC) + timedelta(milliseconds=value)
 
@@ -111,7 +108,6 @@ def compute_half_day(work_hours: float) -> bool:
     return Decimal(str(work_hours)) < Decimal("4.50")
 
 
-# Request models. Unknown fields, including derived fields, are ignored by Pydantic.
 class EmployeeIn(BaseModel):
     emp_code: Annotated[str, Field(pattern=r"^EMP\d{4,6}$")]
     name: Annotated[str, Field(min_length=1, max_length=100)]
@@ -130,13 +126,13 @@ class EmployeeIn(BaseModel):
 
 class PunchInIn(BaseModel):
     emp_code: str
-    punched_at: EpochMillis = None  # Only omission defaults to now; explicit null is invalid.
+    punched_at: EpochMillis = None
     status: PresenceStatus = "PRESENT"
 
 
 class PunchOutIn(BaseModel):
     emp_code: str
-    punched_at: EpochMillis = None  # An explicit null fails validation.
+    punched_at: EpochMillis = None
 
 
 class RegularizeIn(BaseModel):
@@ -147,7 +143,6 @@ class RegularizeIn(BaseModel):
     regularized_by: Annotated[str, Field(min_length=1, max_length=50)]
 
 
-# An absent _version is version zero, so seeded legacy documents participate in CAS.
 def version_filter(doc: dict) -> dict:
     return {"_version": doc["_version"]} if "_version" in doc else {"_version": {"$exists": False}}
 
@@ -177,7 +172,6 @@ def derived_values(status: str, punch_in: datetime | None, punch_out: datetime |
     }
 
 
-# Serialization is explicit so _id and undocumented fields cannot leak.
 def serialize_employee(doc: dict) -> dict:
     return {
         "emp_code": doc["emp_code"], "name": doc["name"], "email": doc["email"],
@@ -207,7 +201,6 @@ def serialize_attendance(doc: dict) -> dict:
     }
 
 
-# Database lifecycle and indexes.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = MongoClient(
@@ -421,7 +414,6 @@ def list_attendance(
     return {"items": [serialize_attendance(doc) for doc in cursor], "total": total, "page": page, "page_size": page_size}
 
 
-# Analytics pipelines. These builders are shared with Phase 4's explain endpoint.
 PRESENCE_STATUSES = ["PRESENT", "WFH", "ON_DUTY"]
 ANALYTICS_OPTIONS = {"allowDiskUse": True}
 DECIMAL_ZERO = Decimal128("0")
@@ -629,7 +621,6 @@ def late_leaderboard(month: CalendarMonth, limit: Annotated[int, Query(ge=1, le=
     return {"month": month, "items": rows}
 
 
-# Trend and explain endpoints.
 def validate_trend_range(from_date: str, to_date: str) -> int:
     first, last = date.fromisoformat(from_date), date.fromisoformat(to_date)
     days = (last - first).days + 1
@@ -652,7 +643,7 @@ def department_trend_pipeline(department: str, from_date: str, to_date: str) -> 
     presence = {"$in": ["$status", PRESENCE_STATUSES]}
     return [
         {"$match": {"department": department}},
-        {"$limit": 1},  # One existing employee anchors the database-side date spine.
+        {"$limit": 1},
         {"$project": {"_id": 0, "days": {"$map": {
             "input": {"$range": [0, days]}, "as": "offset",
             "in": {"$dateAdd": {"startDate": start, "unit": "day", "amount": "$$offset"}},

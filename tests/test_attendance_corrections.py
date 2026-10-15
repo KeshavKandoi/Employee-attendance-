@@ -1,12 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
 from threading import Barrier
 
-import pytest
 from pymongo.collection import Collection
 
 from app.main import utc_to_epoch_ms
-from test_phase1 import employee, instant
+from test_attendance_core import employee, instant
 
 DAY = "2026-07-06"
 
@@ -47,8 +45,8 @@ def test_punch_out_normal_thresholds_and_boundaries(api):
     data = result.json()
     assert data["punch_out"] == before - 900
     assert data["work_hours"] == 9.5
-    assert data["late_minutes"] == 17  # Punch-out does not rewrite stored late minutes.
-    assert data["overtime_minutes"] == 0  # 29:59 after shift end
+    assert data["late_minutes"] == 17
+    assert data["overtime_minutes"] == 0
     assert data["half_day"] is False and data["history"] == []
     assert_shape(data)
     assert db.attendance_logs.find_one({"emp_code": "EMP0001"})["punch_out"] == instant(DAY, "18:59:59")
@@ -77,7 +75,7 @@ def test_punch_out_overnight_and_half_day(api):
     add_record(db, "EMP0006", punch_in="09:30:00")
     result = client.post("/attendance/punch-out", json={"emp_code": "EMP0006", "punched_at": ms(DAY, "13:59:59")})
     assert result.status_code == 200 and result.json()["work_hours"] == 4.5
-    assert result.json()["half_day"] is False  # rounded 4.50, despite raw hours below 4.50
+    assert result.json()["half_day"] is False
     add_employee(client, "EMP0007")
     add_record(db, "EMP0007", punch_in="09:30:00")
     result = client.post("/attendance/punch-out", json={"emp_code": "EMP0007", "punched_at": ms(DAY, "13:59:41")})
